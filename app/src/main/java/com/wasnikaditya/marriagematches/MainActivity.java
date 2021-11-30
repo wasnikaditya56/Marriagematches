@@ -2,133 +2,148 @@ package com.wasnikaditya.marriagematches;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.annotation.SuppressLint;
 import android.os.Bundle;
-import android.widget.ImageView;
-import android.widget.TextView;
 
-import android.os.AsyncTask;
-import android.os.Bundle;
-import android.util.JsonReader;
-import android.util.Log;
-import android.view.View;
-import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
-
-import com.squareup.picasso.Picasso;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity
 {
-
-    TextView tv_name, tv_email, tv_gender, tv_birthdate, tv_age;
-    ImageView iv_user_picture;
-
+    List<RecyclerViewData> recyclerViewDataList;
+    RecyclerView recyclerView;
+    private RVAdapter rvAdapter;
+    private static final String TAG="Aditya";
+    DBController db;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        tv_name = findViewById(R.id.tv_name);
-        tv_email = findViewById(R.id.tv_email);
-        tv_gender = findViewById(R.id.tv_gender);
-        tv_birthdate = findViewById(R.id.tv_birthdate);
-        tv_age = findViewById(R.id.tv_age);
-        iv_user_picture = findViewById(R.id.iv_user_picture);
+        setTitle("Marriage List");
 
-        findViewById(R.id.btn_generate).setOnClickListener(new View.OnClickListener() {
+        recyclerViewDataList = new ArrayList<>();
+
+        recyclerView = findViewById(R.id.recyclerView);
+
+        LinearLayoutManager linearLayoutManager = new LinearLayoutManager(this);
+        recyclerView.setLayoutManager(linearLayoutManager);
+
+        if(isNetworkAvailable())
+        {
+            // int count = db.getRowCountCloud();
+            // System.out.println("count:::"+count);
+
+            //  deleteMarriageList();   //check condition first time
+            MakeVolleyConnection();
+        }
+        else
+        {
+            Toast.makeText(this, "Check your Internet Connection..!", Toast.LENGTH_LONG).show();
+        }
+
+    }
+
+    public void deleteMarriageList()
+    {
+        db.deleteMarriageList();
+    }
+
+    private void MakeVolleyConnection()
+    {
+        RequestQueue requestQueue = Volley.newRequestQueue(this);
+
+
+        recyclerViewDataList = new ArrayList<>();
+        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.GET, "https://randomuser.me/api/?results=10", null, new Response.Listener<JSONObject>() {
             @Override
-            public void onClick(View v) {
-                NetworkTask nt = new NetworkTask();
-                nt.execute();
+            public void onResponse(JSONObject response)
+            {
+                try
+                {
+                    System.out.println("response::::59 "+response.toString());
+
+                    JSONArray dataArray = response.getJSONArray("results");
+
+                    System.out.println("dataArray::::63 "+dataArray);
+
+                    //JSONArray dataArray = response.getJSONArray("data");
+                    for (int i = 0; i < dataArray.length(); i++)
+                    {
+
+                        JSONObject userData = dataArray.getJSONObject(i);
+                        JSONObject nameObj = userData.getJSONObject("name");
+
+                        String name = nameObj.getString("title") + ". " + nameObj.getString("first") + " " + nameObj.getString("last");
+                        String email = userData.getString("email");
+                        String gender = userData.getString("gender");
+                        String image_url = userData.getJSONObject("picture").getString("medium");
+                        String birthdate = userData.getJSONObject("dob").getString("date");
+                        String age = userData.getJSONObject("dob").getString("age");
+
+
+                        RecyclerViewData recyclerViewData = new RecyclerViewData();
+
+                   /*     recyclerViewData.setId(userData.getInt("id"));
+                        recyclerViewData.setFirstname(userData.getString("first_name"));
+                        recyclerViewData.setLastname(userData.getString("last_name"));
+                        recyclerViewData.setAvatar(userData.getString("avatar"));*/
+
+                        recyclerViewData.setName(name);
+                        recyclerViewData.setEmail(email);
+                        recyclerViewData.setGender(gender);
+                        recyclerViewData.setImage(image_url);
+                        recyclerViewData.setBirthdate(birthdate);
+                        recyclerViewData.setAge(age);
+
+                        recyclerViewDataList.add(recyclerViewData);
+
+                       /* FileInputStream fis = new FileInputStream(image_url);
+                        byte[] image= new byte[fis.available()];
+                        fis.read(image);*/
+                        DBController db = new DBController(MainActivity.this);
+                        //  db.insertMarriageDetail(name, email, gender, Integer.parseInt(image_url), birthdate, age );
+                        db.insertMarriageDetail(name, email, gender, birthdate, age );
+                        System.out.println(":::116 ");
+
+                    }
+                    rvAdapter = new RVAdapter(recyclerViewDataList, MainActivity.this);
+                    recyclerView.setAdapter(rvAdapter);
+                }
+                catch (JSONException e)
+                {
+                    e.printStackTrace();
+                }
+            }
+        }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Toast.makeText(MainActivity.this, ""+error.networkResponse,Toast.LENGTH_SHORT).show();
             }
         });
+
+        requestQueue.add(jsonObjectRequest);
     }
 
-
-    class NetworkTask extends AsyncTask {
-
-        @Override
-        protected Object doInBackground(Object[] objects) {
-            try {
-                URL url = new URL("https://randomuser.me/api/");
-                InputStream is = url.openStream();
-                byte[] buffer = new byte[4096];
-                StringBuilder sb = new StringBuilder("");
-
-
-                while (is.read(buffer) != -1) {
-                    sb.append(new String(buffer));
-                }
-
-                Log.i("apiresponse", sb.toString());
-
-                try {
-                    JSONObject obj = new JSONObject(sb.toString());
-                    JSONArray results = obj.getJSONArray("results");
-                    JSONObject user = results.getJSONObject(0);
-                    JSONObject nameObj = user.getJSONObject("name");
-                    String name = nameObj.getString("title") + ". " + nameObj.getString("first") + " " + nameObj.getString("last");
-                    publishProgress(name, 0);
-
-                    String email = user.getString("email");
-                    publishProgress(email, 1);
-
-                    String gender = user.getString("gender");
-                    publishProgress(gender, 2);
-
-                    String image_url = user.getJSONObject("picture").getString("medium");
-                    publishProgress(image_url, 3);
-
-                    String birthdate = user.getJSONObject("dob").getString("date");
-                    publishProgress(birthdate, 4);
-
-                    String age = user.getJSONObject("dob").getString("age");
-                    publishProgress(age, 5);
-
-                } catch (JSONException ex) {
-                    ex.printStackTrace();
-                }
-
-            } catch (MalformedURLException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-            return null;
-        }
-
-        @Override
-        protected void onProgressUpdate(Object[] values) {
-            Toast.makeText(MainActivity.this, values[0].toString(), Toast.LENGTH_SHORT).show();
-            switch (Integer.parseInt(values[1] + "")) {
-                case 0:
-                    tv_name.setText("Name: " + values[0].toString());
-                    break;
-                case 1:
-                    tv_email.setText("Email: " + values[0].toString());
-                    break;
-                case 2:
-                    tv_gender.setText("Gender: " + values[0].toString());
-                    break;
-                case 3:
-                    Picasso.get().load(values[0].toString()).into(iv_user_picture);
-                case 4:
-                    tv_birthdate.setText("Date: " + values[0]);
-                case 5:
-                    tv_age.setText("Age: " + values[0]);
-            }
-        }
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService( CONNECTIVITY_SERVICE );
+        @SuppressLint("MissingPermission") NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
-
 }
